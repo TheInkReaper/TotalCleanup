@@ -23,7 +23,6 @@
 # Paso 1: Comprobar Permisos de Administrador y Re-ejecutar si es necesario
 # ==============================================================================
 
-# Esta parte no suele salir, al ejecutar pide confirmacion de inicio como administrador y todo esto ocurre sin verse
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "Este script requiere permisos de administrador para ejecutarse." -ForegroundColor Red
     Write-Host "Intentando elevar permisos..." -ForegroundColor Yellow
@@ -39,7 +38,6 @@ Write-Host "--------------------------------------------------------" -Foregroun
 # Paso 2: Funcion de Registro en Consola y Utilidades
 # ==============================================================================
 
-# Variable global para acumular el log para el informe
 $scriptLogContent = New-Object System.Text.StringBuilder
 
 function Write-ConsoleLog {
@@ -50,7 +48,7 @@ function Write-ConsoleLog {
     )
     $output = if ($NoTime) { $Message } else { "$((Get-Date -Format 'HH:mm:ss')) - $Message" }
     Write-Host $output -ForegroundColor $ColorName
-    if (-not $NoTime) { # No añadir encabezados o mensajes sin tiempo al log del informe
+    if (-not $NoTime) {
         [void]$scriptLogContent.AppendLine($output)
     }
 }
@@ -60,8 +58,7 @@ function Create-SystemRestorePoint {
     try {
         if (-not (Get-ComputerRestorePoint -ErrorAction SilentlyContinue)) {
             Write-ConsoleLog "  - El servicio de proteccion del sistema no esta activo. Intentando habilitarlo..." "Yellow"
-            # Habilitar proteccion del sistema para la unidad C:
-            Enable-ComputerRestorePoint -Drive "C:\" -ErrorAction SilentlyContinue
+            Enable-ComputerRestore -Drive "C:\" -ErrorAction Stop
             Start-Sleep -Seconds 2 
         }
         
@@ -127,7 +124,6 @@ function Invoke-CleanTemporaryFiles {
         Remove-Item "C:\Windows\Prefetch\*" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
         
         Write-ConsoleLog "  - Ejecutando cleanmgr (limpieza adicional del sistema)..."
-        # /sagerun:1 usa la configuracion guardada de cleanmgr. Si no hay, ejecuta el asistente interactivo.
         Start-Process cleanmgr.exe -ArgumentList "/sagerun:1" -NoNewWindow -Wait -ErrorAction SilentlyContinue | Out-Null
         
         Write-ConsoleLog "Completado: Archivos Temporales y Prefetch limpiados." "Green"
@@ -152,7 +148,7 @@ function Invoke-CleanWindowsUpdateCache {
     Write-ConsoleLog "Iniciando: Limpieza de Cache de Windows Update..." "Blue"
     try {
         Write-ConsoleLog "  - Deteniendo servicio de Windows Update..."
-        Stop-Service -Name wuauserv -ErrorAction SilentlyContinue
+        Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue
         
         Write-ConsoleLog "  - Eliminando archivos de descarga de actualizaciones..."
         Remove-Item "C:\Windows\SoftwareDistribution\Download\*" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
@@ -182,11 +178,10 @@ function Invoke-CleanUserCaches {
 
         foreach ($cachePath in $userCaches) {
             try {
-                $resolvedPaths = Get-ChildItem -Path $cachePath -Directory -ErrorAction SilentlyContinue
-                
-                if ($resolvedPaths) {
-                    Write-ConsoleLog "  - Limpiando: $cachePath"
-                    Remove-Item $resolvedPaths.FullName -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+                $resolvedPath = Resolve-Path $cachePath -ErrorAction SilentlyContinue
+                if ($resolvedPath) {
+                    Write-ConsoleLog "  - Limpiando: $resolvedPath"
+                    Remove-Item -Path "$resolvedPath\*" -Recurse -Force -ErrorAction SilentlyContinue
                 } else {
                     Write-ConsoleLog "  - Ruta no encontrada o vacia (se omite): $cachePath" "Yellow"
                 }
@@ -213,14 +208,14 @@ function Invoke-CleanEventLogs {
     }
 
     try {
-        $eventLogNames = Get-WinEvent -ListLog * -ErrorAction SilentlyContinue | Select-Object -ExpandProperty LogName
+        $eventLogNames = Get-WinEvent -ListLog * -ErrorAction SilentlyContinue | Where-Object {$_.RecordCount} | Select-Object -ExpandProperty LogName
         
         foreach ($logName in $eventLogNames) {
             try {
                 Write-ConsoleLog "  - Limpiando log: $logName" "DarkGray"
-                Clear-WinEvent -LogName $logName -Confirm:$false -ErrorAction SilentlyContinue
+                Clear-EventLog -LogName $logName -ErrorAction SilentlyContinue
             } catch {
-                Write-ConsoleLog "  - Error al limpiar log '$logName': $($_.Exception.Message)" "Red"
+                # El error action ya silencia la mayoria de errores (logs protegidos, etc.)
             }
         }
         Write-ConsoleLog "Completado: Registros de Eventos de Windows limpiados." "Green"
@@ -230,6 +225,7 @@ function Invoke-CleanEventLogs {
 }
 
 # --- Tarea 7: Limpiar Puntos de Restauracion Antiguos ---
+# RESTAURADO: Se vuelve a la funcionalidad original que lanza la herramienta gráfica cleanmgr.exe
 function Invoke-CleanOldRestorePoints {
     Write-ConsoleLog "Iniciando: Limpieza de Puntos de Restauracion Antiguos..." "Blue"
     Write-ConsoleLog "  - ADVERTENCIA: Esta accion eliminara todos los puntos de restauracion excepto el mas reciente." "Yellow"
@@ -242,21 +238,15 @@ function Invoke-CleanOldRestorePoints {
     }
 
     try {
-        # Obtener todos los puntos de restauracion
-        $restorePoints = Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Sort-Object CreationTime -Descending
+        $restorePoints = Get-ComputerRestorePoint -ErrorAction SilentlyContinue
         
         if ($restorePoints.Count -gt 1) {
-            # Mantener el más reciente, eliminar los demás
-            for ($i = 1; $i -lt $restorePoints.Count; $i++) {
-                $rp = $restorePoints[$i]
-                Write-ConsoleLog "  - Eliminando punto de restauracion: $($rp.Description) creado el $($rp.CreationTime)..." "DarkGray"
-                Write-ConsoleLog "  - Iniciando la limpieza de disco para eliminar puntos de restauracion antiguos (puede requerir interaccion manual)." "Yellow"
-                Start-Process cleanmgr.exe -ArgumentList "/d C: /sageset:65535" -NoNewWindow -Wait -ErrorAction SilentlyContinue | Out-Null
-                Start-Process cleanmgr.exe -ArgumentList "/d C: /sagerun:65535" -NoNewWindow -Wait -ErrorAction SilentlyContinue | Out-Null
-                Write-ConsoleLog "  - Por favor, en la ventana de limpieza de disco, vaya a 'Más opciones' y use 'Restaurar sistema e instantáneas'." "Cyan"
-                Write-ConsoleLog "  - Es posible que necesite ejecutar esta limpieza varias veces." "Yellow"
-                break
-            }
+            Write-ConsoleLog "  - Iniciando la limpieza de disco para eliminar puntos de restauracion antiguos (requiere interaccion manual)." "Yellow"
+            # Estos comandos abren la utilidad de limpieza de disco. El usuario debe completar el proceso.
+            # sageset abre la configuración, sagerun la ejecuta.
+            Start-Process cleanmgr.exe -ArgumentList "/d C: /sageset:65535" -NoNewWindow -Wait -ErrorAction SilentlyContinue | Out-Null
+            Start-Process cleanmgr.exe -ArgumentList "/d C: /sagerun:65535" -NoNewWindow -Wait -ErrorAction SilentlyContinue | Out-Null
+            Write-ConsoleLog "  - Por favor, en la ventana de limpieza de disco, vaya a 'Más opciones' y use 'Restaurar sistema e instantáneas'." "Cyan"
             Write-ConsoleLog "Completado: Proceso de limpieza de Puntos de Restauracion Antiguos iniciado. Revise la herramienta de limpieza de disco." "Green"
         } elseif ($restorePoints.Count -eq 1) {
             Write-ConsoleLog "  - Solo se encontro un punto de restauracion. No se eliminara." "Yellow"
@@ -351,16 +341,16 @@ function Invoke-ChkdskScan {
 function Invoke-DefragmentDisk {
     Write-ConsoleLog "Iniciando: Desfragmentacion de Disco (solo para HDD)." "Blue"
     try {
-        $driveType = (Get-Partition -DriveLetter C).DriveType
-        if ($driveType -eq 3) { # 3 = HDD, 2 = SSD
+        $disk = Get-PhysicalDisk (Get-Partition -DriveLetter C).DiskNumber
+        if ($disk.MediaType -eq 'HDD') {
             Write-ConsoleLog "  - Detectado disco duro HDD. Iniciando desfragmentacion de C:..."
             Optimize-Volume -DriveLetter C -Defrag -Verbose
             Write-ConsoleLog "Completado: Desfragmentacion de C: finalizada." "Green"
-        } elseif ($driveType -eq 2) {
+        } elseif ($disk.MediaType -eq 'SSD') {
             Write-ConsoleLog "  - Detectado disco SSD. La desfragmentacion no es necesaria y puede reducir la vida util del SSD." "Yellow"
-            Write-ConsoleLog "  - Optimizacion (retrim) en SSD se realiza automaticamente por el sistema." "Yellow"
+            Write-ConsoleLog "  - Optimizacion (TRIM) en SSD se realiza automaticamente por el sistema." "Yellow"
         } else {
-            Write-ConsoleLog "  - Tipo de unidad no reconocida o no soportada para desfragmentacion." "Yellow"
+            Write-ConsoleLog "  - Tipo de unidad no reconocida ('$($disk.MediaType)') o no soportada para desfragmentacion." "Yellow"
         }
     } catch {
         Write-ConsoleLog "Error al desfragmentar disco: $($_.Exception.Message)" "Red"
@@ -410,62 +400,15 @@ function Invoke-UninstallPrograms {
     Write-ConsoleLog "Iniciando: Eliminacion de Programas no Utilizados y Restos de Software..." "Blue"
     Write-ConsoleLog "  - ADVERTENCIA: Esta es una operacion delicada. Desinstalar programas incorrectos puede desestabilizar el sistema." "Red"
     Write-ConsoleLog "  - Proceda con extrema precaucion y solo si esta seguro de lo que esta desinstalando." "Yellow"
-    Write-ConsoleLog "  - La desinstalacion puede requerir interaccion manual del usuario para los instaladores." "Yellow"
-
+    
     try {
-        Write-ConsoleLog "" 
-        Write-ConsoleLog "Programas Instalados (solo para referencia):" "Cyan"
-        Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate | Format-Table -AutoSize -Wrap
-        Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate | Format-Table -AutoSize -Wrap
-        
         Write-ConsoleLog "" 
         Write-ConsoleLog "Para una desinstalacion segura y guiada, se recomienda:" "Yellow"
         Write-ConsoleLog "  - Ir a 'Configuracion' -> 'Aplicaciones' -> 'Aplicaciones y caracteristicas'." "Cyan"
         Write-ConsoleLog "  - O use 'Panel de control' -> 'Programas y caracteristicas'." "Cyan"
         
-        $confirm = Read-Host "Desea intentar desinstalar un programa desde aqui (requiere nombre exacto)? (S/N)"
-        if ($confirm -notmatch "[Ss]") {
-            Write-ConsoleLog "Cancelado: Eliminacion de programas." "Yellow"
-            return
-        }
-
-        $programName = Read-Host "Ingrese el nombre EXACTO del programa a desinstalar (debe coincidir con DisplayName)"
-        
-        $uninstallString = $null
-        try {
-            $uninstallEntry = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object {$_.DisplayName -eq $programName} | Select-Object UninstallString, PSPath
-            if (-not $uninstallEntry) {
-                $uninstallEntry = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object {$_.DisplayName -eq $programName} | Select-Object UninstallString, PSPath
-            }
-            
-            if ($uninstallEntry) {
-                $uninstallString = $uninstallEntry.UninstallString
-                Write-ConsoleLog "  - Encontrado desinstalador para '$programName': $uninstallString" "DarkGray"
-                
-                if ($uninstallString -like "*.exe*") {
-                    # Si es un EXE, intentar ejecutarlo
-                    $executable = $uninstallString.Split(" ")[0].Trim('"')
-                    $arguments = ($uninstallString -replace "^\`"$executable`"").Trim()
-                    
-                    Write-ConsoleLog "  - Ejecutando desinstalador: '$executable' con argumentos '$arguments'..." "Blue"
-                    Start-Process -FilePath $executable -ArgumentList $arguments -Wait -ErrorAction SilentlyContinue
-                } elseif ($uninstallString -like "MsiExec.exe*") {
-                    # Si es MsiExec, manejarlo como tal
-                    Write-ConsoleLog "  - Ejecutando desinstalador MSI: '$uninstallString'..." "Blue"
-                    Start-Process -FilePath "msiexec.exe" -ArgumentList ($uninstallString -replace "MsiExec.exe /I", "/X") -Wait -ErrorAction SilentlyContinue
-                } else {
-                    Write-ConsoleLog "  - Tipo de desinstalador no reconocido o no soportado para desinstalacion automatica. Intente la desinstalacion manual." "Yellow"
-                }
-                
-                Write-ConsoleLog "  - Verifique manualmente si '$programName' se ha desinstalado correctamente." "Yellow"
-                Write-ConsoleLog "Completado: Intentado desinstalar el programa." "Green"
-            } else {
-                Write-ConsoleLog "  - No se encontro el programa '$programName' en las entradas de desinstalacion. Verifique el nombre exacto." "Red"
-            }
-        } catch {
-            Write-ConsoleLog "Error al intentar desinstalar el programa: $($_.Exception.Message)" "Red"
-        }
-        Write-ConsoleLog "Completado: Proceso de eliminacion de Programas no Utilizados." "Green"
+        Write-ConsoleLog ""
+        Write-ConsoleLog "Completado: Guia para desinstalacion manual mostrada." "Green"
     } catch {
         Write-ConsoleLog "Error general en la funcion de desinstalacion: $($_.Exception.Message)" "Red"
     }
@@ -510,37 +453,26 @@ function Invoke-RunAllTasks {
     Write-ConsoleLog "Iniciando: Ejecucion de TODAS las tareas de mantenimiento." "Blue" -NoTime
     Write-ConsoleLog "=====================================================" "Blue" -NoTime
 
-    # Generar punto de restauración antes de empezar tareas intensivas
     Create-SystemRestorePoint
 
-    # Limpieza Básica
     Invoke-CleanDnsCache
     Invoke-CleanTemporaryFiles
     Invoke-EmptyRecycleBin
     Invoke-CleanWindowsUpdateCache
     Invoke-CleanUserCaches
     Invoke-CleanEventLogs
-    
-    # Optimizacion
-    Invoke-DefragmentDisk # Si es HDD
-
-    # Reparacion (DISM y SFC deben ir en este orden)
+    Invoke-DefragmentDisk
     Invoke-DismCommands
     Invoke-SfcScan
-    
-    # Reset de Red (si es necesario)
     Invoke-ResetNetworkConfig
-
-    # Tareas que requieren interacción o reinicio al final
     Invoke-ChkdskScan
 
     Write-ConsoleLog "=====================================================" "Blue" -NoTime
     Write-ConsoleLog "Todas las tareas automaticas completadas." "Green" -NoTime
     Write-ConsoleLog "=====================================================" "Blue" -NoTime
     Write-ConsoleLog "NOTA: CHKDSK se ha PROGRAMADO. Debes REINICIAR el PC para que se complete." "Red"
-    Write-ConsoleLog "NOTA: Algunas operaciones avanzadas (desinstalacion, drivers, gestion de inicio, servicios) son manuales/guiadas." "Yellow"
+    Write-ConsoleLog "NOTA: Algunas operaciones avanzadas (desinstalacion, drivers, etc.) son guias manuales." "Yellow"
 
-    # Generar el informe automáticamente al finalizar todas las tareas
     Generate-PostExecutionReport -LogContent $scriptLogContent.ToString()
 }
 
@@ -577,8 +509,8 @@ function Show-MaintenanceMenu {
     Write-Host "   12. Resetear Configuracion de Red (Winsock/TCP-IP)" -ForegroundColor Yellow
     Write-Host "------------------------------------------------" -ForegroundColor DarkCyan
     Write-Host "  SECCION AVANZADA / GUIA (PROCEDA CON PRECAUCION):" -ForegroundColor Red
-    Write-Host "   13. Gestionar Programas de Inicio (Guia para el Administrador de Tareas)"
-    Write-Host "   14. Eliminar Programas no Utilizados (Interaccion/Guia)" -ForegroundColor Red
+    Write-Host "   13. Gestionar Programas de Inicio (Guia)"
+    Write-Host "   14. Eliminar Programas no Utilizados (Guia)" -ForegroundColor Red
     Write-Host "   15. Buscar y Actualizar Controladores (Guia)"
     Write-Host "   16. Optimizar Servicios de Windows (Guia)" -ForegroundColor Red
     Write-Host "------------------------------------------------" -ForegroundColor DarkCyan
@@ -593,7 +525,7 @@ function Show-MaintenanceMenu {
 }
 
 # ==============================================================================
-# Paso 5: Nueva Funcion de Pantalla de Bienvenida (PREVIA AL MENU)
+# Paso 5: Pantalla de Bienvenida
 # ==============================================================================
 function Show-WelcomeScreen {
     Clear-Host
@@ -626,13 +558,11 @@ function Show-WelcomeScreen {
 }
 
 # ==============================================================================
-# Paso 6: Bucle principal del menu (flujo de inicio modificado)
+# Paso 6: Bucle principal del menu
 # ==============================================================================
 
-# Mostrar la pantalla de bienvenida al inicio
 Show-WelcomeScreen
 
-# Bucle principal del menu
 $initial = $true
 do {
     Show-MaintenanceMenu -InitialCall:$initial
@@ -641,7 +571,6 @@ do {
     $choice = Read-Host "Ingresa tu opcion (0-19)"
     Write-Host ""
 
-    # Reiniciar el log del script para cada nueva sesión de menú
     $scriptLogContent.Clear()
     
     switch ($choice) {
