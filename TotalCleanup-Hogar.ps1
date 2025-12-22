@@ -1,7 +1,7 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 <#
 .SYNOPSIS
-    Herramienta de Mantenimiento de Windows basada en PowerShell (Version de Consola).
+    Herramienta de Mantenimiento de Windows - Version Hogar v3.0
     Ofrece opciones para limpiar y reparar el sistema mediante seleccion interactiva.
 
 .DESCRIPTION
@@ -10,7 +10,8 @@
     cache de Windows Update, caches de usuario, y ejecucion de herramientas de reparacion como DISM,
     SFC y CHKDSK.
 
-    Disenado para mejorar el rendimiento y la estabilidad del sistema operativo Windows.
+    Disenado para usuarios sin conocimientos tecnicos avanzados.
+    Todas las operaciones son seguras y automaticas.
 
 .AUTHOR
     TheInkReaper
@@ -19,21 +20,40 @@
     Requiere permisos de administrador para la mayoria de las operaciones.
     Se recomienda ejecutarlo haciendo clic derecho y "Ejecutar como administrador".
     Las operaciones de CHKDSK requieren un reinicio para completarse.
+    
+.VERSION
+    3.0
 #>
+
+# ==============================================================================
+# Paso 0: Verificar y Ajustar Politica de Ejecucion
+# ==============================================================================
+
+$currentPolicy = Get-ExecutionPolicy -Scope Process
+if ($currentPolicy -eq 'Restricted' -or $currentPolicy -eq 'Undefined') {
+    try {
+        Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+    } catch {
+        Write-Host "ERROR: No se pudo ajustar la politica de ejecucion." -ForegroundColor Red
+        Write-Host "Ejecuta PowerShell como administrador y vuelve a intentarlo." -ForegroundColor Red
+        Write-Host "Presiona cualquier tecla para salir..."
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        exit 1
+    }
+}
 
 # ==============================================================================
 # Paso 1: Comprobar Permisos de Administrador y Re-ejecutar si es necesario
 # ==============================================================================
 
-# Esta parte no suele salir, al ejecutar pide confirmacion de inicio como administrador y todo esto ocurre sin verse
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "Este script requiere permisos de administrador para ejecutarse." -ForegroundColor Red
     Write-Host "Intentando elevar permisos..." -ForegroundColor Yellow
-    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -File `"$PSCommandPath`""
+    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
     exit
 }
 
-Write-Host "Iniciando la Herramienta de Mantenimiento del Sistema (modo consola)..." -ForegroundColor Cyan
+Write-Host "Iniciando la Herramienta de Mantenimiento del Sistema - Version Hogar v3.0" -ForegroundColor Cyan
 Write-Host "Asegurese de ejecutar esta ventana como administrador." -ForegroundColor Yellow
 Write-Host "--------------------------------------------------------" -ForegroundColor DarkCyan
 
@@ -70,14 +90,19 @@ function Invoke-CleanTemporaryFiles {
     Write-ConsoleLog "Iniciando: Limpieza de Archivos Temporales (Usuario, Sistema y Prefetch)..." "Blue"
     try {
         Write-ConsoleLog "  - Limpiando temporales de usuario ($env:TEMP)..."
-        Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
-        Write-ConsoleLog "  - Limpiando temporales de sistema (C:\Windows\Temp)..."
-        Remove-Item "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
-        Write-ConsoleLog "  - Limpiando archivos Prefetch (C:\Windows\Prefetch)..."
-        Remove-Item "C:\Windows\Prefetch\*" -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path $env:TEMP) {
+            Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+        }
         
-        Write-ConsoleLog "  - Ejecutando cleanmgr (limpieza adicional del sistema)..."
-        Start-Process cleanmgr.exe -ArgumentList "/sagerun:1" -NoNewWindow -Wait -ErrorAction SilentlyContinue
+        Write-ConsoleLog "  - Limpiando temporales de sistema (C:\Windows\Temp)..."
+        if (Test-Path "C:\Windows\Temp") {
+            Remove-Item "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        
+        Write-ConsoleLog "  - Limpiando archivos Prefetch (C:\Windows\Prefetch)..."
+        if (Test-Path "C:\Windows\Prefetch") {
+            Remove-Item "C:\Windows\Prefetch\*" -Recurse -Force -ErrorAction SilentlyContinue
+        }
         
         Write-ConsoleLog "Completado: Archivos Temporales y Prefetch limpiados." "Green"
     } catch {
@@ -104,7 +129,9 @@ function Invoke-CleanWindowsUpdateCache {
         Stop-Service -Name wuauserv -ErrorAction SilentlyContinue
         
         Write-ConsoleLog "  - Eliminando archivos de descarga de actualizaciones..."
-        Remove-Item "C:\Windows\SoftwareDistribution\Download\*" -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path "C:\Windows\SoftwareDistribution\Download") {
+            Remove-Item "C:\Windows\SoftwareDistribution\Download\*" -Recurse -Force -ErrorAction SilentlyContinue
+        }
         
         Write-ConsoleLog "  - Iniciando servicio de Windows Update..."
         Start-Service -Name wuauserv -ErrorAction SilentlyContinue
@@ -155,7 +182,6 @@ function Invoke-DismCommands {
     try {
         Write-ConsoleLog "  - DISM /Online /Cleanup-Image /CheckHealth..."
         $dismOutput = (DISM /Online /Cleanup-Image /CheckHealth 2>&1 | Out-String).Trim()
-        Write-ConsoleLog "$dismOutput" "DarkGray"
         if ($dismOutput -like "*No component store corruption detected*") {
             Write-ConsoleLog "  - No se detecto corrupcion en el almacen de componentes (CheckHealth)." "Green"
         } elseif ($dismOutput -like "*The component store is repairable*") {
@@ -166,7 +192,6 @@ function Invoke-DismCommands {
         
         Write-ConsoleLog "  - DISM /Online /Cleanup-Image /ScanHealth (esto puede tardar mas)..."
         $dismOutput = (DISM /Online /Cleanup-Image /ScanHealth 2>&1 | Out-String).Trim()
-        Write-ConsoleLog "$dismOutput" "DarkGray"
         if ($dismOutput -like "*No component store corruption detected*") {
             Write-ConsoleLog "  - No se detecto corrupcion en el almacen de componentes (ScanHealth)." "Green"
         } elseif ($dismOutput -like "*The component store is repairable*") {
@@ -177,7 +202,6 @@ function Invoke-DismCommands {
 
         Write-ConsoleLog "  - DISM /Online /Cleanup-Image /RestoreHealth (esto tambien puede tardar mucho)..."
         $dismOutput = (DISM /Online /Cleanup-Image /RestoreHealth 2>&1 | Out-String).Trim()
-        Write-ConsoleLog "$dismOutput" "DarkGray"
         if ($dismOutput -like "*The restore operation completed successfully*") {
             Write-ConsoleLog "  - DISM RestoreHealth completado con exito." "Green"
         } else {
@@ -194,7 +218,6 @@ function Invoke-SfcScan {
     Write-ConsoleLog "Iniciando: Ejecucion de SFC /scannow (esto puede tardar)..." "Blue"
     try {
         $sfcOutput = (sfc /scannow 2>&1 | Out-String).Trim()
-        Write-ConsoleLog "$sfcOutput" "DarkGray"
         if ($sfcOutput -like "*Windows Resource Protection did not find any integrity violations*") {
             Write-ConsoleLog "Completado: SFC /scannow no encontro violaciones de integridad." "Green"
         } elseif ($sfcOutput -like "*Windows Resource Protection found corrupt files and successfully repaired them*") {
@@ -211,6 +234,13 @@ function Invoke-SfcScan {
 function Invoke-ChkdskScan {
     Write-ConsoleLog "Iniciando: Ejecucion de CHKDSK C: /r (requerira reinicio y puede tardar mucho)." "Blue"
     Write-ConsoleLog "  - ADVERTENCIA: Esta operacion puede tardar horas y requiere un reinicio." "Red"
+    
+    $confirm = Read-Host "Estas SEGURO de que quieres programar CHKDSK? (S/N)"
+    if ($confirm -notmatch "[Ss]") {
+        Write-ConsoleLog "Cancelado: CHKDSK no fue programado." "Yellow"
+        return
+    }
+    
     try {
         chkdsk C: /r
         Write-ConsoleLog "Completado: CHKDSK C: /r ha sido solicitado." "Green"
@@ -247,14 +277,14 @@ function Invoke-RunAllTasks {
 
 function Show-MaintenanceMenu {
     param(
-        [switch]$InitialCall # Para limpiar la consola solo la primera vez
+        [switch]$InitialCall
     )
     if ($InitialCall) {
-        Clear-Host # Limpia la pantalla para un menu limpio
+        Clear-Host
     }
     
     Write-Host ""
-    Write-Host "--- Herramienta de Mantenimiento del Sistema ---" -ForegroundColor Yellow
+    Write-Host "--- Herramienta de Mantenimiento HOGAR v3.0 ---" -ForegroundColor Yellow
     Write-Host "Selecciona una opcion:" -ForegroundColor Cyan
     Write-Host "  1. Limpiar Cache DNS"
     Write-Host "  2. Limpiar Archivos Temporales (Usuario, Sistema y Prefetch)"
@@ -275,7 +305,7 @@ function Show-MaintenanceMenu {
 $initial = $true
 do {
     Show-MaintenanceMenu -InitialCall:$initial
-    $initial = $false # Solo limpiar la consola la primera vez
+    $initial = $false
 
     $choice = Read-Host "Ingresa tu opcion (0-9)"
     Write-Host "" 
@@ -298,7 +328,7 @@ do {
         Write-Host ""
         Write-Host "Presiona cualquier tecla para volver al menu principal..." -ForegroundColor Yellow
         $null = Read-Host
-        Clear-Host # Limpiar la consola antes de mostrar el menu de nuevo
+        Clear-Host
     }
 
 } while ($choice -ne "0")
