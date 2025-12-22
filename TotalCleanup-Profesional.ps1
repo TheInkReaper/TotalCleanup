@@ -1,13 +1,15 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 <#
 .SYNOPSIS
-    Herramienta de Mantenimiento de Windows basada en PowerShell (Version de Consola PRO).
+    Herramienta de Mantenimiento de Windows basada en PowerShell - Version Profesional v3.0
     Ofrece opciones avanzadas para limpiar, reparar y optimizar el sistema mediante seleccion interactiva.
 
 .DESCRIPTION
     Este script permite al usuario seleccionar y ejecutar diversas tareas de mantenimiento del sistema
     directamente en la consola. Incluye limpieza, reparacion, optimizacion y gestion de componentes del sistema.
     Disenado para mejorar el rendimiento, la estabilidad y la gestion del sistema operativo Windows.
+    
+    Version diseñada para usuarios tecnicos avanzados y profesionales.
 
 .AUTHOR
     TheInkReaper
@@ -17,7 +19,27 @@
     Se recomienda ejecutarlo haciendo clic derecho y "Ejecutar como administrador".
     Las operaciones de CHKDSK requieren un reinicio para completarse.
     Algunas operaciones son AVANZADAS y requieren conocimientos. Proceda con precaucion.
+    
+.VERSION
+    3.0
 #>
+
+# ==============================================================================
+# Paso 0: Verificar y Ajustar Politica de Ejecucion
+# ==============================================================================
+
+$currentPolicy = Get-ExecutionPolicy -Scope Process
+if ($currentPolicy -eq 'Restricted' -or $currentPolicy -eq 'Undefined') {
+    try {
+        Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+    } catch {
+        Write-Host "ERROR: No se pudo ajustar la politica de ejecucion." -ForegroundColor Red
+        Write-Host "Ejecuta PowerShell como administrador y vuelve a intentarlo." -ForegroundColor Red
+        Write-Host "Presiona cualquier tecla para salir..."
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        exit 1
+    }
+}
 
 # ==============================================================================
 # Paso 1: Comprobar Permisos de Administrador y Re-ejecutar si es necesario
@@ -26,11 +48,11 @@
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "Este script requiere permisos de administrador para ejecutarse." -ForegroundColor Red
     Write-Host "Intentando elevar permisos..." -ForegroundColor Yellow
-    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -File `"$PSCommandPath`""
+    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
     exit
 }
 
-Write-Host "Iniciando la Herramienta de Mantenimiento del Sistema (modo consola)..." -ForegroundColor Cyan
+Write-Host "Iniciando la Herramienta de Mantenimiento del Sistema PROFESIONAL v3.0..." -ForegroundColor Cyan
 Write-Host "Asegurese de ejecutar esta ventana como administrador." -ForegroundColor Yellow
 Write-Host "--------------------------------------------------------" -ForegroundColor DarkCyan
 
@@ -62,7 +84,7 @@ function Create-SystemRestorePoint {
             Start-Sleep -Seconds 2 
         }
         
-        $description = "TotalCleanupPro_AntesDeMantenimiento_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+        $description = "TotalCleanupProfesional_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
         Checkpoint-Computer -Description $description -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
         Write-ConsoleLog "Completado: Punto de Restauracion '$description' creado con exito." "Green"
     } catch {
@@ -76,13 +98,13 @@ function Generate-PostExecutionReport {
         [string]$LogContent 
     )
     Write-ConsoleLog "Iniciando: Generacion de Informe Post-Ejecucion..." "Blue"
-    $reportFileName = "TotalCleanupPro_Report_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+    $reportFileName = "TotalCleanupProfesional_Report_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
     $reportPath = Join-Path $PSScriptRoot $reportFileName
 
     try {
         $reportHeader = @"
 =====================================================
-Informe de Ejecucion - TotalCleanupConsolePro
+Informe de Ejecucion - TotalCleanup Profesional v3.0
 Fecha y Hora: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 =====================================================
 
@@ -117,14 +139,19 @@ function Invoke-CleanTemporaryFiles {
     Write-ConsoleLog "Iniciando: Limpieza de Archivos Temporales (Usuario, Sistema y Prefetch)..." "Blue"
     try {
         Write-ConsoleLog "  - Limpiando temporales de usuario ($env:TEMP)..."
-        Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-        Write-ConsoleLog "  - Limpiando temporales de sistema (C:\Windows\Temp)..."
-        Remove-Item "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-        Write-ConsoleLog "  - Limpiando archivos Prefetch (C:\Windows\Prefetch)..."
-        Remove-Item "C:\Windows\Prefetch\*" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+        if (Test-Path $env:TEMP) {
+            Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+        }
         
-        Write-ConsoleLog "  - Ejecutando cleanmgr (limpieza adicional del sistema)..."
-        Start-Process cleanmgr.exe -ArgumentList "/sagerun:1" -NoNewWindow -Wait -ErrorAction SilentlyContinue | Out-Null
+        Write-ConsoleLog "  - Limpiando temporales de sistema (C:\Windows\Temp)..."
+        if (Test-Path "C:\Windows\Temp") {
+            Remove-Item "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        
+        Write-ConsoleLog "  - Limpiando archivos Prefetch (C:\Windows\Prefetch)..."
+        if (Test-Path "C:\Windows\Prefetch") {
+            Remove-Item "C:\Windows\Prefetch\*" -Recurse -Force -ErrorAction SilentlyContinue
+        }
         
         Write-ConsoleLog "Completado: Archivos Temporales y Prefetch limpiados." "Green"
     } catch {
@@ -149,9 +176,12 @@ function Invoke-CleanWindowsUpdateCache {
     try {
         Write-ConsoleLog "  - Deteniendo servicio de Windows Update..."
         Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
         
         Write-ConsoleLog "  - Eliminando archivos de descarga de actualizaciones..."
-        Remove-Item "C:\Windows\SoftwareDistribution\Download\*" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+        if (Test-Path "C:\Windows\SoftwareDistribution\Download") {
+            Remove-Item "C:\Windows\SoftwareDistribution\Download\*" -Recurse -Force -ErrorAction SilentlyContinue
+        }
         
         Write-ConsoleLog "  - Iniciando servicio de Windows Update..."
         Start-Service -Name wuauserv -ErrorAction SilentlyContinue
@@ -178,10 +208,10 @@ function Invoke-CleanUserCaches {
 
         foreach ($cachePath in $userCaches) {
             try {
-                $resolvedPath = Resolve-Path $cachePath -ErrorAction SilentlyContinue
-                if ($resolvedPath) {
-                    Write-ConsoleLog "  - Limpiando: $resolvedPath"
-                    Remove-Item -Path "$resolvedPath\*" -Recurse -Force -ErrorAction SilentlyContinue
+                $resolvedPaths = Get-Item -Path $cachePath -ErrorAction SilentlyContinue
+                if ($resolvedPaths) {
+                    Write-ConsoleLog "  - Limpiando: $cachePath"
+                    Remove-Item -Path "$cachePath\*" -Recurse -Force -ErrorAction SilentlyContinue
                 } else {
                     Write-ConsoleLog "  - Ruta no encontrada o vacia (se omite): $cachePath" "Yellow"
                 }
@@ -196,6 +226,7 @@ function Invoke-CleanUserCaches {
 }
 
 # --- Tarea 6: Limpiar Registros de Eventos ---
+# ADVERTENCIA: Limpiar logs puede dificultar diagnostico de problemas futuros.
 function Invoke-CleanEventLogs {
     Write-ConsoleLog "Iniciando: Limpieza de Registros de Eventos de Windows..." "Blue"
     Write-ConsoleLog "  - ADVERTENCIA: La eliminacion de logs de eventos puede dificultar el" "Yellow"
@@ -208,14 +239,13 @@ function Invoke-CleanEventLogs {
     }
 
     try {
-        $eventLogNames = Get-WinEvent -ListLog * -ErrorAction SilentlyContinue | Where-Object {$_.RecordCount} | Select-Object -ExpandProperty LogName
+        $eventLogNames = wevtutil el
         
         foreach ($logName in $eventLogNames) {
             try {
-                Write-ConsoleLog "  - Limpiando log: $logName" "DarkGray"
-                Clear-EventLog -LogName $logName -ErrorAction SilentlyContinue
+                wevtutil cl "$logName" 2>$null
             } catch {
-                # El error action ya silencia la mayoria de errores (logs protegidos, etc.)
+                # Algunos logs están protegidos y no se pueden limpiar
             }
         }
         Write-ConsoleLog "Completado: Registros de Eventos de Windows limpiados." "Green"
@@ -224,37 +254,56 @@ function Invoke-CleanEventLogs {
     }
 }
 
-# --- Tarea 7: Limpiar Puntos de Restauracion Antiguos ---
-# RESTAURADO: Se vuelve a la funcionalidad original que lanza la herramienta gráfica cleanmgr.exe
+# --- Tarea 7: Limpiar Puntos de Restauracion Antiguos (Hibrido) ---
 function Invoke-CleanOldRestorePoints {
     Write-ConsoleLog "Iniciando: Limpieza de Puntos de Restauracion Antiguos..." "Blue"
-    Write-ConsoleLog "  - ADVERTENCIA: Esta accion eliminara todos los puntos de restauracion excepto el mas reciente." "Yellow"
-    Write-ConsoleLog "  - Asegurese de tener un punto de restauracion actual o no eliminar si no esta seguro." "Yellow"
+    Write-ConsoleLog "  - ADVERTENCIA: Esta accion puede eliminar puntos de restauracion." "Red"
+    Write-Host ""
+    Write-Host "Opciones disponibles:" -ForegroundColor Cyan
+    Write-Host "  1. Eliminar TODOS excepto el mas reciente (automatico con vssadmin)" -ForegroundColor Yellow
+    Write-Host "  2. Usar herramienta grafica de Windows (requiere interaccion manual)" -ForegroundColor Green
+    Write-Host "     NOTA: Esta opcion requiere configuracion previa y puede fallar" -ForegroundColor DarkYellow
+    Write-Host "     si no has usado la herramienta de limpieza de disco anteriormente." -ForegroundColor DarkYellow
+    Write-Host "  3. Cancelar" -ForegroundColor White
+    Write-Host ""
     
-    $confirm = Read-Host "Desea continuar con la eliminacion de puntos de restauracion antiguos? (S/N)"
-    if ($confirm -notmatch "[Ss]") {
-        Write-ConsoleLog "Cancelado: Limpieza de Puntos de Restauracion Antiguos." "Yellow"
-        return
-    }
-
-    try {
-        $restorePoints = Get-ComputerRestorePoint -ErrorAction SilentlyContinue
-        
-        if ($restorePoints.Count -gt 1) {
-            Write-ConsoleLog "  - Iniciando la limpieza de disco para eliminar puntos de restauracion antiguos (requiere interaccion manual)." "Yellow"
-            # Estos comandos abren la utilidad de limpieza de disco. El usuario debe completar el proceso.
-            # sageset abre la configuración, sagerun la ejecuta.
-            Start-Process cleanmgr.exe -ArgumentList "/d C: /sageset:65535" -NoNewWindow -Wait -ErrorAction SilentlyContinue | Out-Null
-            Start-Process cleanmgr.exe -ArgumentList "/d C: /sagerun:65535" -NoNewWindow -Wait -ErrorAction SilentlyContinue | Out-Null
-            Write-ConsoleLog "  - Por favor, en la ventana de limpieza de disco, vaya a 'Más opciones' y use 'Restaurar sistema e instantáneas'." "Cyan"
-            Write-ConsoleLog "Completado: Proceso de limpieza de Puntos de Restauracion Antiguos iniciado. Revise la herramienta de limpieza de disco." "Green"
-        } elseif ($restorePoints.Count -eq 1) {
-            Write-ConsoleLog "  - Solo se encontro un punto de restauracion. No se eliminara." "Yellow"
-        } else {
-            Write-ConsoleLog "  - No se encontraron puntos de restauracion para eliminar." "Yellow"
+    $option = Read-Host "Selecciona opcion (1/2/3)"
+    
+    switch ($option) {
+        "1" {
+            $confirm = Read-Host "Esto eliminara TODOS los puntos excepto el mas reciente. ¿Continuar? (S/N)"
+            if ($confirm -match "[Ss]") {
+                try {
+                    Write-ConsoleLog "  - Eliminando puntos de restauracion antiguos..." "Cyan"
+                    vssadmin delete shadows /all /quiet
+                    Write-ConsoleLog "Completado: Puntos antiguos eliminados." "Green"
+                } catch {
+                    Write-ConsoleLog "Error: $($_.Exception.Message)" "Red"
+                }
+            } else {
+                Write-ConsoleLog "Cancelado." "Yellow"
+            }
         }
-    } catch {
-        Write-ConsoleLog "Error al limpiar Puntos de Restauracion Antiguos: $($_.Exception.Message)" "Red"
+        "2" {
+            try {
+                Write-ConsoleLog "  - Abriendo herramienta de limpieza de disco..." "Cyan"
+                Write-ConsoleLog "  - IMPORTANTE: Si la herramienta no muestra opciones de limpieza," "Yellow"
+                Write-ConsoleLog "    es porque no esta configurada. Usa la opcion 1 en su lugar." "Yellow"
+                Write-Host ""
+                Write-ConsoleLog "  - En la ventana: Mas opciones > Restaurar sistema e instantaneas > Limpiar" "Cyan"
+                Start-Process cleanmgr.exe -ArgumentList "/d C:" -Wait
+                Write-ConsoleLog "Completado: Verifica la herramienta de limpieza." "Green"
+            } catch {
+                Write-ConsoleLog "Error al abrir cleanmgr: $($_.Exception.Message)" "Red"
+                Write-ConsoleLog "  - Intenta usar la opcion 1 (vssadmin) en su lugar." "Yellow"
+            }
+        }
+        "3" {
+            Write-ConsoleLog "Cancelado." "Yellow"
+        }
+        default {
+            Write-ConsoleLog "Opcion no valida. Cancelado." "Red"
+        }
     }
 }
 
@@ -266,7 +315,6 @@ function Invoke-DismCommands {
     try {
         Write-ConsoleLog "  - DISM /Online /Cleanup-Image /CheckHealth..."
         $dismOutput = (DISM /Online /Cleanup-Image /CheckHealth 2>&1 | Out-String).Trim()
-        Write-ConsoleLog "$dismOutput" "DarkGray"
         [void]$scriptLogContent.AppendLine("DISM CheckHealth Output:`n$dismOutput")
         if ($dismOutput -like "*No component store corruption detected*") {
             Write-ConsoleLog "  - No se detecto corrupcion en el almacen de componentes (CheckHealth)." "Green"
@@ -278,7 +326,6 @@ function Invoke-DismCommands {
         
         Write-ConsoleLog "  - DISM /Online /Cleanup-Image /ScanHealth (esto puede tardar mas)..."
         $dismOutput = (DISM /Online /Cleanup-Image /ScanHealth 2>&1 | Out-String).Trim()
-        Write-ConsoleLog "$dismOutput" "DarkGray"
         [void]$scriptLogContent.AppendLine("DISM ScanHealth Output:`n$dismOutput")
         if ($dismOutput -like "*No component store corruption detected*") {
             Write-ConsoleLog "  - No se detecto corrupcion en el almacen de componentes (ScanHealth)." "Green"
@@ -290,7 +337,6 @@ function Invoke-DismCommands {
 
         Write-ConsoleLog "  - DISM /Online /Cleanup-Image /RestoreHealth (esto tambien puede tardar mucho)..."
         $dismOutput = (DISM /Online /Cleanup-Image /RestoreHealth 2>&1 | Out-String).Trim()
-        Write-ConsoleLog "$dismOutput" "DarkGray"
         [void]$scriptLogContent.AppendLine("DISM RestoreHealth Output:`n$dismOutput")
         if ($dismOutput -like "*The restore operation completed successfully*") {
             Write-ConsoleLog "  - DISM RestoreHealth completado con exito." "Green"
@@ -309,7 +355,6 @@ function Invoke-SfcScan {
     Write-ConsoleLog "  - Se recomienda crear un punto de restauracion antes de ejecutar estas herramientas de reparacion." "Yellow"
     try {
         $sfcOutput = (sfc /scannow 2>&1 | Out-String).Trim()
-        Write-ConsoleLog "$sfcOutput" "DarkGray"
         [void]$scriptLogContent.AppendLine("SFC /scannow Output:`n$sfcOutput")
         if ($sfcOutput -like "*Windows Resource Protection did not find any integrity violations*") {
             Write-ConsoleLog "Completado: SFC /scannow no encontro violaciones de integridad." "Green"
@@ -328,6 +373,13 @@ function Invoke-ChkdskScan {
     Write-ConsoleLog "Iniciando: Ejecucion de CHKDSK C: /r (requerira reinicio y puede tardar mucho)." "Blue"
     Write-ConsoleLog "  - ADVERTENCIA: Esta operacion puede tardar horas y requiere un reinicio." "Red"
     Write-ConsoleLog "  - Se recomienda crear un punto de restauracion antes de programar CHKDSK." "Yellow"
+    
+    $confirm = Read-Host "Estas SEGURO de que quieres programar CHKDSK en C:? (S/N)"
+    if ($confirm -notmatch "[Ss]") {
+        Write-ConsoleLog "Cancelado: CHKDSK no fue programado." "Yellow"
+        return
+    }
+    
     try {
         chkdsk C: /r
         Write-ConsoleLog "Completado: CHKDSK C: /r ha sido solicitado." "Green"
@@ -362,6 +414,13 @@ function Invoke-ResetNetworkConfig {
     Write-ConsoleLog "Iniciando: Reseteo de Configuracion de Red (Winsock y TCP/IP)." "Blue"
     Write-ConsoleLog "  - ADVERTENCIA: Esta operacion puede requerir un reinicio para que los cambios surtan efecto." "Yellow"
     Write-ConsoleLog "  - Se recomienda crear un punto de restauracion antes de resetear la configuracion de red." "Yellow"
+    
+    $confirm = Read-Host "Desea continuar con el reseteo de configuracion de red? (S/N)"
+    if ($confirm -notmatch "[Ss]") {
+        Write-ConsoleLog "Cancelado: Reseteo de configuracion de red." "Yellow"
+        return
+    }
+    
     try {
         Write-ConsoleLog "  - Reseteando Winsock Catalog..."
         netsh winsock reset | Out-Null
@@ -446,34 +505,166 @@ function Invoke-OptimizeWindowsServices {
     Write-ConsoleLog "Completado: Guia para la Optimizacion de Servicios de Windows mostrada." "Green"
 }
 
-
-# --- Tarea 17: Ejecutar Todas las Tareas en Orden ---
-function Invoke-RunAllTasks {
-    Write-ConsoleLog "=====================================================" "Blue" -NoTime
-    Write-ConsoleLog "Iniciando: Ejecucion de TODAS las tareas de mantenimiento." "Blue" -NoTime
-    Write-ConsoleLog "=====================================================" "Blue" -NoTime
-
+# --- Tarea 17: Crear Punto de Restauracion ---
+function Invoke-CreateRestorePoint {
     Create-SystemRestorePoint
+}
 
-    Invoke-CleanDnsCache
-    Invoke-CleanTemporaryFiles
-    Invoke-EmptyRecycleBin
-    Invoke-CleanWindowsUpdateCache
-    Invoke-CleanUserCaches
-    Invoke-CleanEventLogs
-    Invoke-DefragmentDisk
-    Invoke-DismCommands
-    Invoke-SfcScan
-    Invoke-ResetNetworkConfig
-    Invoke-ChkdskScan
-
-    Write-ConsoleLog "=====================================================" "Blue" -NoTime
-    Write-ConsoleLog "Todas las tareas automaticas completadas." "Green" -NoTime
-    Write-ConsoleLog "=====================================================" "Blue" -NoTime
-    Write-ConsoleLog "NOTA: CHKDSK se ha PROGRAMADO. Debes REINICIAR el PC para que se complete." "Red"
-    Write-ConsoleLog "NOTA: Algunas operaciones avanzadas (desinstalacion, drivers, etc.) son guias manuales." "Yellow"
-
+# --- Tarea 18: Generar Informe de Sesion ---
+function Invoke-GenerateReport {
     Generate-PostExecutionReport -LogContent $scriptLogContent.ToString()
+}
+
+# NOTA: Esta funcion ejecuta un mantenimiento completo del sistema.
+# Incluye todas las tareas automaticas seguras y algunas que requieren confirmacion.
+# --- Tarea 19: Ejecutar Todas las Tareas (COMPLETO) ---
+function Invoke-RunAllTasksComplete {
+    Write-ConsoleLog "=====================================================" "Magenta" -NoTime
+    Write-ConsoleLog "EJECUTAR TODO (COMPLETO)" "Magenta" -NoTime
+    Write-ConsoleLog "=====================================================" "Magenta" -NoTime
+    Write-Host ""
+    Write-Host "Este proceso ejecutará TODAS las tareas disponibles:" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "TAREAS INCLUIDAS:" -ForegroundColor Yellow
+    Write-Host "  - Crear Punto de Restauración (inicio)" -ForegroundColor White
+    Write-Host "  - Limpieza completa (DNS, Temp, Papelera, WU, Caches)" -ForegroundColor White
+    Write-Host "  - Limpieza de Logs de Eventos (con confirmación)" -ForegroundColor White
+    Write-Host "  - Desfragmentación de disco (solo HDD)" -ForegroundColor White
+    Write-Host "  - Comandos DISM (CheckHealth, ScanHealth, RestoreHealth)" -ForegroundColor White
+    Write-Host "  - SFC /scannow" -ForegroundColor White
+    Write-Host "  - Reseteo de configuración de red (con confirmación)" -ForegroundColor White
+    Write-Host "  - CHKDSK C: /r (con confirmación - requiere reinicio)" -ForegroundColor Yellow
+    Write-Host "  - Generar Informe (final)" -ForegroundColor White
+    Write-Host ""
+    Write-Host "ADVERTENCIAS:" -ForegroundColor Red
+    Write-Host "  - Este proceso puede tardar varias horas" -ForegroundColor Red
+    Write-Host "  - Algunas tareas requieren confirmación individual" -ForegroundColor Red
+    Write-Host "  - CHKDSK requiere reinicio del sistema" -ForegroundColor Red
+    Write-Host ""
+    
+    $confirm = Read-Host "¿Deseas continuar con el mantenimiento COMPLETO? (S/N)"
+    
+    if ($confirm -notmatch "[Ss]") {
+        Write-ConsoleLog "Operación cancelada por el usuario." -ColorName Yellow
+        return
+    }
+    
+    Write-ConsoleLog "=====================================================" "Blue"
+    Write-ConsoleLog "Iniciando mantenimiento COMPLETO del sistema..." "Blue"
+    Write-ConsoleLog "=====================================================" "Blue"
+    
+    Create-SystemRestorePoint
+    Write-Host ""
+    
+    Invoke-CleanDnsCache
+    Write-Host ""
+    
+    Invoke-CleanTemporaryFiles
+    Write-Host ""
+    
+    Invoke-EmptyRecycleBin
+    Write-Host ""
+    
+    Invoke-CleanWindowsUpdateCache
+    Write-Host ""
+    
+    Invoke-CleanUserCaches
+    Write-Host ""
+    
+    Invoke-CleanEventLogs
+    Write-Host ""
+    
+    Invoke-DefragmentDisk
+    Write-Host ""
+    
+    Invoke-DismCommands
+    Write-Host ""
+    
+    Invoke-SfcScan
+    Write-Host ""
+    
+    Invoke-ResetNetworkConfig
+    Write-Host ""
+    
+    Invoke-ChkdskScan
+    Write-Host ""
+    
+    Generate-PostExecutionReport -LogContent $scriptLogContent.ToString()
+    
+    Write-ConsoleLog "=====================================================" "Blue"
+    Write-ConsoleLog "Mantenimiento COMPLETO finalizado." "Green"
+    Write-ConsoleLog "=====================================================" "Blue"
+    Write-Host ""
+    Write-Host "RECORDATORIO: Si programaste CHKDSK, debes reiniciar el PC." -ForegroundColor Red
+}
+
+# --- Tarea 20: Ejecutar Todas las Tareas (SEGURO) ---
+function Invoke-RunAllTasksSafe {
+    Write-ConsoleLog "=====================================================" "Green" -NoTime
+    Write-ConsoleLog "EJECUTAR TODO (SEGURO)" "Green" -NoTime
+    Write-ConsoleLog "=====================================================" "Green" -NoTime
+    Write-Host ""
+    Write-Host "Este proceso ejecutará solo tareas 100% seguras:" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "TAREAS INCLUIDAS:" -ForegroundColor Green
+    Write-Host "  - Crear Punto de Restauración (inicio)" -ForegroundColor White
+    Write-Host "  - Limpieza de Cache DNS" -ForegroundColor White
+    Write-Host "  - Limpieza de Archivos Temporales" -ForegroundColor White
+    Write-Host "  - Vaciar Papelera de Reciclaje" -ForegroundColor White
+    Write-Host "  - Limpieza de Cache de Windows Update" -ForegroundColor White
+    Write-Host "  - Limpieza de Caches de Usuario" -ForegroundColor White
+    Write-Host "  - Comandos DISM (CheckHealth, ScanHealth, RestoreHealth)" -ForegroundColor White
+    Write-Host "  - SFC /scannow" -ForegroundColor White
+    Write-Host "  - Generar Informe (final)" -ForegroundColor White
+    Write-Host ""
+    Write-Host "TAREAS NO INCLUIDAS (ejecutar manualmente si necesario):" -ForegroundColor Yellow
+    Write-Host "  - Limpieza de Logs de Eventos" -ForegroundColor Yellow
+    Write-Host "  - Desfragmentación de disco" -ForegroundColor Yellow
+    Write-Host "  - Limpieza de Puntos de Restauración" -ForegroundColor Yellow
+    Write-Host "  - Reseteo de configuración de red" -ForegroundColor Yellow
+    Write-Host "  - CHKDSK (requiere reinicio)" -ForegroundColor Yellow
+    Write-Host ""
+    
+    $confirm = Read-Host "¿Deseas continuar con el mantenimiento SEGURO? (S/N)"
+    
+    if ($confirm -notmatch "[Ss]") {
+        Write-ConsoleLog "Operación cancelada por el usuario." -ColorName Yellow
+        return
+    }
+    
+    Write-ConsoleLog "=====================================================" "Blue"
+    Write-ConsoleLog "Iniciando mantenimiento SEGURO del sistema..." "Blue"
+    Write-ConsoleLog "=====================================================" "Blue"
+    
+    Create-SystemRestorePoint
+    Write-Host ""
+    
+    Invoke-CleanDnsCache
+    Write-Host ""
+    
+    Invoke-CleanTemporaryFiles
+    Write-Host ""
+    
+    Invoke-EmptyRecycleBin
+    Write-Host ""
+    
+    Invoke-CleanWindowsUpdateCache
+    Write-Host ""
+    
+    Invoke-CleanUserCaches
+    Write-Host ""
+    
+    Invoke-DismCommands
+    Write-Host ""
+    
+    Invoke-SfcScan
+    Write-Host ""
+    
+    Generate-PostExecutionReport -LogContent $scriptLogContent.ToString()
+    
+    Write-ConsoleLog "=====================================================" "Blue"
+    Write-ConsoleLog "Mantenimiento SEGURO finalizado." "Green"
+    Write-ConsoleLog "=====================================================" "Blue"
 }
 
 # ==============================================================================
@@ -489,7 +680,7 @@ function Show-MaintenanceMenu {
     }
     
     Write-Host ""
-    Write-Host "--- Herramienta de Mantenimiento del Sistema PRO ---" -ForegroundColor Yellow
+    Write-Host "--- Herramienta de Mantenimiento PROFESIONAL v3.0 ---" -ForegroundColor Yellow
     Write-Host "Selecciona una opcion:" -ForegroundColor Cyan
     Write-Host "------------------------------------------------" -ForegroundColor DarkCyan
     Write-Host "  SECCION DE LIMPIEZA Y OPTIMIZACION:" -ForegroundColor Green
@@ -500,7 +691,7 @@ function Show-MaintenanceMenu {
     Write-Host "    5. Limpiar Caches Comunes de Usuario (Navegadores, etc.)"
     Write-Host "    6. Limpiar Registros de Eventos de Windows (Precaucion)" -ForegroundColor Yellow
     Write-Host "    7. Desfragmentar Disco (Solo HDD)"
-    Write-Host "    8. Limpiar Puntos de Restauracion Antiguos (Requiere interaccion manual)" -ForegroundColor Yellow
+    Write-Host "    8. Limpiar Puntos de Restauracion Antiguos (Hibrido)" -ForegroundColor Yellow
     Write-Host "------------------------------------------------" -ForegroundColor DarkCyan
     Write-Host "  SECCION DE REPARACION Y RESETEO:" -ForegroundColor Green
     Write-Host "    9. Ejecutar Comandos DISM (CheckHealth, ScanHealth, RestoreHealth)"
@@ -518,8 +709,11 @@ function Show-MaintenanceMenu {
     Write-Host "   17. Crear Punto de Restauracion del Sistema"
     Write-Host "   18. Generar Informe de Ejecucion"
     Write-Host "------------------------------------------------" -ForegroundColor DarkCyan
-    Write-Host "  19. EJECUTAR TODAS LAS TAREAS (Automaticas y Seguras)" -ForegroundColor Magenta
-    Write-Host "   0. Salir" -ForegroundColor Red
+    Write-Host "  AUTOMATIZACION:" -ForegroundColor Magenta
+    Write-Host "   19. EJECUTAR TODO (COMPLETO) - Incluye tareas avanzadas" -ForegroundColor Magenta
+    Write-Host "   20. EJECUTAR TODO (SEGURO) - Solo tareas sin riesgos" -ForegroundColor Green
+    Write-Host "------------------------------------------------" -ForegroundColor DarkCyan
+    Write-Host "    0. Salir" -ForegroundColor Red
     Write-Host "------------------------------------------------" -ForegroundColor DarkCyan
     Write-Host ""
 }
@@ -527,10 +721,11 @@ function Show-MaintenanceMenu {
 # ==============================================================================
 # Paso 5: Pantalla de Bienvenida
 # ==============================================================================
+
 function Show-WelcomeScreen {
     Clear-Host
     Write-Host "================================================================" -ForegroundColor DarkYellow
-    Write-Host "       BIENVENIDO A LA HERRAMIENTA DE MANTENIMIENTO PRO" -ForegroundColor Yellow
+    Write-Host "       BIENVENIDO A LA HERRAMIENTA DE MANTENIMIENTO PROFESIONAL" -ForegroundColor Yellow
     Write-Host "================================================================" -ForegroundColor DarkYellow
     Write-Host ""
     Write-Host "INFORMACION IMPORTANTE Y ADVERTENCIAS:" -ForegroundColor Red
@@ -539,7 +734,7 @@ function Show-WelcomeScreen {
     Write-Host "    como administrador para que todas las funciones operen correctamente." -ForegroundColor White
     Write-Host "2.  CREAR PUNTO DE RESTAURACION: Siempre se recomienda crear un punto de" -ForegroundColor White
     Write-Host "    restauracion del sistema antes de realizar cambios significativos." -ForegroundColor White
-    Write-Host "    Este script ofrece una opcion para hacerlo (opcion 17 y al ejecutar TODAS)." -ForegroundColor White
+    Write-Host "    Este script ofrece una opcion para hacerlo (opcion 17)." -ForegroundColor White
     Write-Host "3.  OPERACIONES DE REINICIO: Algunas tareas (como CHKDSK C:/r) requieren" -ForegroundColor White
     Write-Host "    un REINICIO del equipo para completarse. El script le avisara." -ForegroundColor White
     Write-Host "4.  SECCION AVANZADA / GUIA: Las opciones en esta seccion (13, 14, 15, 16)" -ForegroundColor White
@@ -547,9 +742,13 @@ function Show-WelcomeScreen {
     Write-Host "    ¡PROCEDA CON EXTREMA PRECAUCION SI NO ESTA SEGURO DE LO QUE HACE!" -ForegroundColor Red
     Write-Host "    Desinstalar programas incorrectos o modificar el inicio o servicios puede afectar" -ForegroundColor White
     Write-Host "    la estabilidad del sistema." -ForegroundColor White
-    Write-Host "5.  INFORME DE EJECUCION: Al finalizar, puede generar un informe (opcion 18)" -ForegroundColor White
-    Write-Host "    con los detalles de las operaciones realizadas. Si elige 'Ejecutar TODAS'," -ForegroundColor White
-    Write-Host "    el informe se generara automaticamente al final de ese proceso." -ForegroundColor White
+    Write-Host "5.  DOS MODOS DE AUTOMATIZACION:" -ForegroundColor White
+    Write-Host "    - COMPLETO (opcion 19):" -ForegroundColor Magenta -NoNewLine
+    Write-Host " Ejecuta todas las tareas, incluyendo avanzadas." -ForegroundColor White
+    Write-Host "    - SEGURO (opcion 20):" -ForegroundColor Green -NoNewLine
+    Write-Host " Solo ejecuta tareas 100% seguras sin riesgos." -ForegroundColor White
+    Write-Host "6.  INFORME DE EJECUCION: Al finalizar, puede generar un informe (opcion 18)" -ForegroundColor White
+    Write-Host "    con los detalles de las operaciones realizadas." -ForegroundColor White
     Write-Host "----------------------------------------------------------------" -ForegroundColor DarkRed
     Write-Host ""
     Write-Host "Presione cualquier tecla para continuar al menu principal..." -ForegroundColor Yellow
@@ -568,7 +767,7 @@ do {
     Show-MaintenanceMenu -InitialCall:$initial
     $initial = $false
 
-    $choice = Read-Host "Ingresa tu opcion (0-19)"
+    $choice = Read-Host "Ingresa tu opcion (0-20)"
     Write-Host ""
 
     $scriptLogContent.Clear()
@@ -590,11 +789,12 @@ do {
         "14" { Invoke-UninstallPrograms }
         "15" { Invoke-UpdateDrivers }
         "16" { Invoke-OptimizeWindowsServices }
-        "17" { Create-SystemRestorePoint }
-        "18" { Generate-PostExecutionReport -LogContent $scriptLogContent.ToString() }
-        "19" { Invoke-RunAllTasks }
+        "17" { Invoke-CreateRestorePoint }
+        "18" { Invoke-GenerateReport }
+        "19" { Invoke-RunAllTasksComplete }
+        "20" { Invoke-RunAllTasksSafe }
         "0" { Write-ConsoleLog "Saliendo de la herramienta de mantenimiento. ¡Hasta pronto!" "Yellow"; break }
-        default { Write-ConsoleLog "Opcion no valida. Por favor, selecciona un numero del 0 al 19." "Red" }
+        default { Write-ConsoleLog "Opcion no valida. Por favor, selecciona un numero del 0 al 20." "Red" }
     }
 
     if ($choice -ne "0") {
