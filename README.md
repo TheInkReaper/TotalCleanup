@@ -14,12 +14,47 @@ Una colección de scripts de PowerShell diseñados para ayudar a los usuarios a 
 - ✅ **Mejor manejo de errores** y validación de rutas
 - ✅ **Interfaz mejorada** con advertencias más claras
 - ✅ **Solución híbrida para limpieza de puntos de restauración** (Profesional)
+- ✅ **🆕 Versión con Interfaz Gráfica (GUI)** - ¡Nueva!
+
+---
+
+## 🖥️ NUEVO: Versión con Interfaz Gráfica (GUI)
+
+**Archivo:** `GUI/TotalCleanupGUI.ps1`
+
+¿Prefieres botones en lugar de menús de texto? La nueva versión GUI incluye:
+
+- 🎨 **Interfaz visual** con botones organizados por categorías
+- 🎯 **Tres niveles** (Hogar, Técnico, Profesional) en una sola aplicación
+- 🚦 **Código de colores** para identificar el riesgo de cada tarea
+- ⏱️ **Tiempo estimado** en cada botón
+- 📊 **Estadísticas de sesión** y contador de tareas
+- ⌨️ **Atajos de teclado** (Ctrl+S, Ctrl+L, Ctrl+N, F1)
+- 📖 **Guías integradas** en ventanas emergentes
+- 🖼️ **Splash screen** al iniciar
+
+### ¿Cómo usar la GUI?
+
+1. Descarga `GUI/TotalCleanupGUI.ps1`
+2. (Opcional) Descarga `GUI/icon.ico` en la misma carpeta
+3. Clic derecho → "Ejecutar con PowerShell"
+4. Selecciona tu nivel de experiencia
+5. ¡Haz clic en los botones!
+
+📁 **[Ver carpeta GUI](./GUI/)** para más información.
 
 ---
 
 ## 📦 ¿Qué edición elegir?
 
 Este proyecto ofrece **tres ediciones** con diferentes niveles de funcionalidad. Elige la que mejor se adapte a tus necesidades y conocimientos técnicos.
+
+| Versión | Interfaz | Ideal para |
+|---------|----------|------------|
+| **TotalCleanup-Hogar** | Consola | Usuarios básicos |
+| **TotalCleanup-Técnico** | Consola | Usuarios intermedios |
+| **TotalCleanup-Profesional** | Consola | Profesionales IT |
+| **TotalCleanupGUI** | Gráfica | Todos los niveles en una app |
 
 ---
 
@@ -153,20 +188,22 @@ Este proyecto ofrece **tres ediciones** con diferentes niveles de funcionalidad.
 
 ## 📊 Tabla Comparativa de Ediciones
 
-| Característica | Hogar | Técnico | Profesional |
-|----------------|:-----:|:-------:|:-----------:|
-| **Limpieza básica** (DNS, temp, papelera, caches) | ✅ | ✅ | ✅ |
-| **Reparación** (DISM, SFC, CHKDSK) | ✅ | ✅ | ✅ |
-| **Diagnóstico de discos (S.M.A.R.T.)** | ❌ | ✅ | ✅ |
-| **Verificar reinicio pendiente** | ❌ | ✅ | ✅ |
-| **Crear punto de restauración** | ❌ | ✅ | ✅ |
-| **Generar informes** | ❌ | ✅ | ✅ |
-| **Limpieza de logs/eventos** | ❌ | ❌ | ✅ |
-| **Desfragmentación inteligente** | ❌ | ❌ | ✅ |
-| **Reseteo de red** | ❌ | ❌ | ✅ |
-| **Guías avanzadas** (drivers, servicios, inicio) | ❌ | ❌ | ✅ |
-| **Modo "Ejecutar Todo"** | ✅ Básico | ✅ Seguro | ✅ Completo + Seguro |
-| **Opciones totales en menú** | 9 | 14 | 20 |
+| Característica | Hogar | Técnico | Profesional | GUI |
+|----------------|:-----:|:-------:|:-----------:|:---:|
+| **Limpieza básica** (DNS, temp, papelera, caches) | ✅ | ✅ | ✅ | ✅ |
+| **Reparación** (DISM, SFC, CHKDSK) | ✅ | ✅ | ✅ | ✅ |
+| **Diagnóstico de discos (S.M.A.R.T.)** | ❌ | ✅ | ✅ | ✅ |
+| **Verificar reinicio pendiente** | ❌ | ✅ | ✅ | ✅ |
+| **Crear punto de restauración** | ❌ | ✅ | ✅ | ✅ |
+| **Generar informes** | ❌ | ✅ | ✅ | ✅ |
+| **Limpieza de logs/eventos** | ❌ | ❌ | ✅ | ✅ |
+| **Desfragmentación inteligente** | ❌ | ❌ | ✅ | ✅ |
+| **Reseteo de red** | ❌ | ❌ | ✅ | ✅ |
+| **Guías avanzadas** (drivers, servicios, inicio) | ❌ | ❌ | ✅ | ✅ |
+| **Modo "Ejecutar Todo"** | ✅ Básico | ✅ Seguro | ✅ Completo + Seguro | ✅ Ambos |
+| **Interfaz gráfica** | ❌ | ❌ | ❌ | ✅ |
+| **Atajos de teclado** | ❌ | ❌ | ❌ | ✅ |
+| **Selector de nivel** | ❌ | ❌ | ❌ | ✅ |
 
 ---
 
@@ -176,6 +213,22 @@ Este proyecto ofrece **tres ediciones** con diferentes niveles de funcionalidad.
 - **PowerShell:** Versión 5.1 o superior (incluido en Windows)
 - **Permisos:** Administrador (el script los solicita automáticamente)
 - **Espacio:** Mínimo 100 MB libres para logs e informes
+
+---
+
+## 📁 Estructura del Proyecto
+
+```
+TotalCleanup/
+├── README.md                      # Este archivo
+├── TotalCleanup-Hogar.ps1         # Versión básica (consola)
+├── TotalCleanup-Tecnico.ps1       # Versión intermedia (consola)
+├── TotalCleanup-Profesional.ps1   # Versión avanzada (consola)
+└── GUI/                           # Versión con interfaz gráfica
+    ├── TotalCleanupGUI.ps1        # Aplicación GUI
+    ├── icon.ico                   # Icono (opcional)
+    └── README.md                  # Documentación de la GUI
+```
 
 ---
 
@@ -199,6 +252,7 @@ Este proyecto ofrece **tres ediciones** con diferentes niveles de funcionalidad.
 - Botón "Ejecutar Todo" en las tres versiones
 - Solución híbrida para limpieza de puntos de restauración
 - Dos modos en Profesional: Completo y Seguro
+- **🆕 Versión GUI completa con interfaz gráfica**
 
 ---
 
